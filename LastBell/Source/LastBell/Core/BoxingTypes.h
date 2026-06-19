@@ -90,7 +90,7 @@ struct FAttackData
     float AttackRange = 160.f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
-    float HitboxActiveStart = 0.1f;
+    float HitboxActiveStart = 0.10f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
     float HitboxActiveEnd = 0.25f;
