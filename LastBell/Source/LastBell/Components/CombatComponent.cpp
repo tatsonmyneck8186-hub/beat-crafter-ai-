@@ -5,52 +5,41 @@
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Camera/CameraShakeBase.h"
+#include "HAL/PlatformTime.h"
 
 UCombatComponent::UCombatComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
 
-    FAttackData JabDefault;
-    JabDefault.MoveType = EBoxingMove::Jab;
-    JabDefault.BaseDamage = 8.f;
-    JabDefault.StaminaCost = 8.f;
-    JabDefault.KOMeterGain = 4.f;
-    JabDefault.HitStunDuration = 0.10f;
-    JabDefault.HitPauseDuration = 0.05f;
-    JabDefault.AttackRange = 160.f;
-    JabDefault.HitboxActiveStart = 0.08f;
-    JabDefault.HitboxActiveEnd = 0.22f;
-    JabDefault.TotalDuration = 0.40f;
-    JabDefault.CameraShakeIntensity = 0.6f;
-    AttackDataMap.Add(EBoxingMove::Jab, JabDefault);
+    // Jab
+    FAttackData Jab;
+    Jab.MoveType = EBoxingMove::Jab;
+    Jab.BaseDamage = 8.f;  Jab.StaminaCost = 8.f;  Jab.KOMeterGain = 4.f;
+    Jab.HitStunDuration = 0.10f; Jab.HitPauseDuration = 0.05f;
+    Jab.AttackRange = 160.f;
+    Jab.HitboxActiveStart = 0.08f; Jab.HitboxActiveEnd = 0.22f;
+    Jab.TotalDuration = 0.40f; Jab.CameraShakeIntensity = 0.6f;
+    AttackDataMap.Add(EBoxingMove::Jab, Jab);
 
-    FAttackData HookDefault;
-    HookDefault.MoveType = EBoxingMove::Hook;
-    HookDefault.BaseDamage = 14.f;
-    HookDefault.StaminaCost = 14.f;
-    HookDefault.KOMeterGain = 8.f;
-    HookDefault.HitStunDuration = 0.16f;
-    HookDefault.HitPauseDuration = 0.07f;
-    HookDefault.AttackRange = 155.f;
-    HookDefault.HitboxActiveStart = 0.12f;
-    HookDefault.HitboxActiveEnd = 0.28f;
-    HookDefault.TotalDuration = 0.55f;
-    HookDefault.CameraShakeIntensity = 0.9f;
-    AttackDataMap.Add(EBoxingMove::Hook, HookDefault);
+    // Hook
+    FAttackData Hook;
+    Hook.MoveType = EBoxingMove::Hook;
+    Hook.BaseDamage = 14.f; Hook.StaminaCost = 14.f; Hook.KOMeterGain = 8.f;
+    Hook.HitStunDuration = 0.16f; Hook.HitPauseDuration = 0.07f;
+    Hook.AttackRange = 155.f;
+    Hook.HitboxActiveStart = 0.12f; Hook.HitboxActiveEnd = 0.28f;
+    Hook.TotalDuration = 0.55f; Hook.CameraShakeIntensity = 0.9f;
+    AttackDataMap.Add(EBoxingMove::Hook, Hook);
 
-    FAttackData UppercutDefault;
-    UppercutDefault.MoveType = EBoxingMove::Uppercut;
-    UppercutDefault.BaseDamage = 20.f;
-    UppercutDefault.StaminaCost = 20.f;
-    UppercutDefault.KOMeterGain = 14.f;
-    UppercutDefault.HitStunDuration = 0.22f;
-    UppercutDefault.HitPauseDuration = 0.10f;
-    UppercutDefault.AttackRange = 145.f;
-    UppercutDefault.HitboxActiveStart = 0.18f;
-    UppercutDefault.HitboxActiveEnd = 0.35f;
-    UppercutDefault.TotalDuration = 0.70f;
-    UppercutDefault.CameraShakeIntensity = 1.4f;
-    AttackDataMap.Add(EBoxingMove::Uppercut, UppercutDefault);
+    // Uppercut
+    FAttackData Uppercut;
+    Uppercut.MoveType = EBoxingMove::Uppercut;
+    Uppercut.BaseDamage = 20.f; Uppercut.StaminaCost = 20.f; Uppercut.KOMeterGain = 14.f;
+    Uppercut.HitStunDuration = 0.22f; Uppercut.HitPauseDuration = 0.10f;
+    Uppercut.AttackRange = 145.f;
+    Uppercut.HitboxActiveStart = 0.18f; Uppercut.HitboxActiveEnd = 0.35f;
+    Uppercut.TotalDuration = 0.70f; Uppercut.CameraShakeIntensity = 1.4f;
+    AttackDataMap.Add(EBoxingMove::Uppercut, Uppercut);
 }
 
 void UCombatComponent::BeginPlay()
@@ -62,6 +51,10 @@ void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType,
     FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    // Hit-pause restore: use real time so dilation doesn't extend the freeze
+    if (bInHitPause) TickHitPause();
+
     if (bIsAttacking) TickAttack(DeltaTime);
     if (bInHitStun)   TickHitStun(DeltaTime);
     if (bIsDodging)   TickDodge(DeltaTime);
@@ -106,9 +99,7 @@ bool UCombatComponent::TryAttack(EBoxingMove Move)
 
 void UCombatComponent::ReceiveHit(const FAttackData& AttackData, AActor* Attacker)
 {
-    // Duck evades jab/hook
     if (bIsDucking && AttackData.MoveType != EBoxingMove::Uppercut) return;
-    // Active dodge evades all
     if (bIsDodging) return;
 
     if (StatsComp)
@@ -136,18 +127,10 @@ void UCombatComponent::StartDodge()
     if (!CanAct()) return;
     bIsDodging = true;
     DodgeElapsed = 0.f;
-    DodgeDuration = 0.28f;
 }
 
-void UCombatComponent::StartDuck()
-{
-    bIsDucking = true;
-}
-
-void UCombatComponent::StopDuck()
-{
-    bIsDucking = false;
-}
+void UCombatComponent::StartDuck() { bIsDucking = true; }
+void UCombatComponent::StopDuck()  { bIsDucking = false; }
 
 bool UCombatComponent::CanAct() const
 {
@@ -169,15 +152,8 @@ void UCombatComponent::TickAttack(float DeltaTime)
         bHitboxActive = false;
     }
 
-    if (bHitboxActive && !bHitRegisteredThisAttack)
-    {
-        CheckHit();
-    }
-
-    if (AttackElapsed >= CurrentAttackData.TotalDuration)
-    {
-        EndAttack();
-    }
+    if (bHitboxActive && !bHitRegisteredThisAttack) CheckHit();
+    if (AttackElapsed >= CurrentAttackData.TotalDuration) EndAttack();
 }
 
 void UCombatComponent::TickHitStun(float DeltaTime)
@@ -200,6 +176,22 @@ void UCombatComponent::TickDodge(float DeltaTime)
     }
 }
 
+void UCombatComponent::TickHitPause()
+{
+    // Restore time dilation using real (wall-clock) time,
+    // immune to the dilation we just applied.
+    double Now = FPlatformTime::Seconds();
+    if (Now - HitPauseStartRealTime >= HitPauseRealDuration)
+    {
+        bInHitPause = false;
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+        }
+    }
+}
+
 void UCombatComponent::CheckHit()
 {
     if (!OpponentActor || !GetOwner()) return;
@@ -212,9 +204,8 @@ void UCombatComponent::CheckHit()
 
     FVector ToOpponent = (OpponentActor->GetActorLocation()
         - GetOwner()->GetActorLocation()).GetSafeNormal();
-    float DotFwd = FVector::DotProduct(
-        GetOwner()->GetActorForwardVector(), ToOpponent);
-    if (DotFwd < 0.25f) return;
+    if (FVector::DotProduct(GetOwner()->GetActorForwardVector(), ToOpponent) < 0.25f)
+        return;
 
     bHitRegisteredThisAttack = true;
 
@@ -223,7 +214,6 @@ void UCombatComponent::CheckHit()
         IBoxerInterface::Execute_ReceiveHit(
             OpponentActor, CurrentAttackData, GetOwner());
     }
-
     OnHitLanded.Broadcast(CurrentAttack, EHitResult::Hit);
 }
 
@@ -236,28 +226,16 @@ void UCombatComponent::EndAttack()
     OnAttackStateChanged.Broadcast(false);
 }
 
-void UCombatComponent::TriggerHitPause(float Duration)
+void UCombatComponent::TriggerHitPause(float RealDuration)
 {
-    if (Duration <= 0.f) return;
+    if (RealDuration <= 0.f) return;
     UWorld* World = GetWorld();
     if (!World) return;
 
     UGameplayStatics::SetGlobalTimeDilation(World, 0.05f);
-
-    FTimerHandle PauseHandle;
-    // Use a real timer that survives time dilation by using undilated time
-    World->GetTimerManager().SetTimerForNextTick([World, Duration]()
-    {
-        if (IsValid(World))
-        {
-            FTimerHandle RestoreHandle;
-            World->GetTimerManager().SetTimer(RestoreHandle, [World]()
-            {
-                if (IsValid(World))
-                    UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
-            }, Duration / 0.05f, false); // scale duration by dilation
-        }
-    });
+    bInHitPause = true;
+    HitPauseStartRealTime = FPlatformTime::Seconds();
+    HitPauseRealDuration = RealDuration;
 }
 
 void UCombatComponent::TriggerCameraShake(float Intensity)
@@ -270,8 +248,7 @@ void UCombatComponent::TriggerCameraShake(float Intensity)
 
     TSubclassOf<UCameraShakeBase> ShakeClass =
         (Intensity >= 1.2f && HeavyHitCameraShake)
-        ? HeavyHitCameraShake
-        : LightHitCameraShake;
+        ? HeavyHitCameraShake : LightHitCameraShake;
 
     if (ShakeClass)
     {

@@ -7,7 +7,6 @@
 
 class UBoxerStatsComponent;
 class UCameraShakeBase;
-class UNiagaraSystem;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackExecuted, EBoxingMove, Move);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHitLanded, EBoxingMove, Move, EHitResult, Result);
@@ -28,11 +27,10 @@ public:
     virtual void TickComponent(float DeltaTime, ELevelTick TickType,
         FActorComponentTickFunction* ThisTickFunction) override;
 
-    // ─── Setup ────────────────────────────────────────────────────────────────
+    // ─── Setup ───────────────────────────────────────────────────────────────
 
     void SetStatsComponent(UBoxerStatsComponent* InStats);
     void SetOpponent(AActor* InOpponent);
-    void SetFighterData(const TArray<FAttackData>& Attacks);
     void SetAttackData(EBoxingMove Move, const FAttackData& Data);
 
     // ─── Actions ───────────────────────────────────────────────────────────────
@@ -101,7 +99,6 @@ public:
     TObjectPtr<UParticleSystem> KOParticle;
 
 private:
-    // Attack state
     bool bIsAttacking = false;
     bool bIsDucking = false;
     bool bIsDodging = false;
@@ -114,11 +111,15 @@ private:
 
     float AttackElapsed = 0.f;
     float HitStunElapsed = 0.f;
-    float DodgeElapsed = 0.f;
     float HitStunDuration = 0.f;
+    float DodgeElapsed = 0.f;
     float DodgeDuration = 0.3f;
 
-    // Per-move data
+    // Hit-pause tracking using real time so dilation doesn't affect restore
+    bool bInHitPause = false;
+    double HitPauseStartRealTime = 0.0;
+    float HitPauseRealDuration = 0.f;
+
     TMap<EBoxingMove, FAttackData> AttackDataMap;
 
     UPROPERTY()
@@ -130,9 +131,10 @@ private:
     void TickAttack(float DeltaTime);
     void TickHitStun(float DeltaTime);
     void TickDodge(float DeltaTime);
+    void TickHitPause();
     void CheckHit();
     void EndAttack();
-    void TriggerHitPause(float Duration);
+    void TriggerHitPause(float RealDuration);
     void TriggerCameraShake(float Intensity);
     void SpawnHitEffect(const FVector& Location);
 };
