@@ -1,5 +1,6 @@
 #include "Components/CombatComponent.h"
 #include "Components/BoxerStatsComponent.h"
+#include "Core/IBoxerInterface.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystemComponent.h"
@@ -9,13 +10,12 @@ UCombatComponent::UCombatComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
 
-    // Default attack data
     FAttackData JabDefault;
     JabDefault.MoveType = EBoxingMove::Jab;
     JabDefault.BaseDamage = 8.f;
     JabDefault.StaminaCost = 8.f;
     JabDefault.KOMeterGain = 4.f;
-    JabDefault.HitStunDuration = 0.1f;
+    JabDefault.HitStunDuration = 0.10f;
     JabDefault.HitPauseDuration = 0.05f;
     JabDefault.AttackRange = 160.f;
     JabDefault.HitboxActiveStart = 0.08f;
@@ -62,10 +62,9 @@ void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType,
     FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    if (bIsAttacking)    TickAttack(DeltaTime);
-    if (bInHitStun)      TickHitStun(DeltaTime);
-    if (bIsDodging)      TickDodge(DeltaTime);
+    if (bIsAttacking) TickAttack(DeltaTime);
+    if (bInHitStun)   TickHitStun(DeltaTime);
+    if (bIsDodging)   TickDodge(DeltaTime);
 }
 
 void UCombatComponent::SetStatsComponent(UBoxerStatsComponent* InStats)
@@ -114,13 +113,10 @@ void UCombatComponent::ReceiveHit(const FAttackData& AttackData, AActor* Attacke
 
     if (StatsComp)
     {
-        float Damage = AttackData.BaseDamage * (Attacker ?
-            1.f : 1.f); // attacker damage mult applied by caller
-        StatsComp->ApplyDamage(Damage);
+        StatsComp->ApplyDamage(AttackData.BaseDamage);
         StatsComp->AddKOMeter(AttackData.KOMeterGain);
     }
 
-    // Enter hitstun
     bInHitStun = true;
     bIsAttacking = false;
     HitStunDuration = AttackData.HitStunDuration;
@@ -162,8 +158,8 @@ void UCombatComponent::TickAttack(float DeltaTime)
 {
     AttackElapsed += DeltaTime;
 
-    // Activate hitbox window
-    if (!bHitboxActive && AttackElapsed >= CurrentAttackData.HitboxActiveStart
+    if (!bHitboxActive
+        && AttackElapsed >= CurrentAttackData.HitboxActiveStart
         && AttackElapsed < CurrentAttackData.HitboxActiveEnd)
     {
         bHitboxActive = true;
@@ -173,13 +169,11 @@ void UCombatComponent::TickAttack(float DeltaTime)
         bHitboxActive = false;
     }
 
-    // Check for hit during active window
     if (bHitboxActive && !bHitRegisteredThisAttack)
     {
         CheckHit();
     }
 
-    // End attack
     if (AttackElapsed >= CurrentAttackData.TotalDuration)
     {
         EndAttack();
@@ -216,19 +210,18 @@ void UCombatComponent::CheckHit()
 
     if (Distance > CurrentAttackData.AttackRange) return;
 
-    // Check opponent is facing us (in front)
     FVector ToOpponent = (OpponentActor->GetActorLocation()
         - GetOwner()->GetActorLocation()).GetSafeNormal();
-    float DotToForward = FVector::DotProduct(GetOwner()->GetActorForwardVector(), ToOpponent);
-    if (DotToForward < 0.3f) return;
+    float DotFwd = FVector::DotProduct(
+        GetOwner()->GetActorForwardVector(), ToOpponent);
+    if (DotFwd < 0.25f) return;
 
     bHitRegisteredThisAttack = true;
 
-    // Apply hit to opponent through interface
     if (OpponentActor->Implements<UBoxerInterface>())
     {
-        IBoxerInterface::Execute_ReceiveHit(OpponentActor,
-            CurrentAttackData, GetOwner());
+        IBoxerInterface::Execute_ReceiveHit(
+            OpponentActor, CurrentAttackData, GetOwner());
     }
 
     OnHitLanded.Broadcast(CurrentAttack, EHitResult::Hit);
@@ -249,22 +242,26 @@ void UCombatComponent::TriggerHitPause(float Duration)
     UWorld* World = GetWorld();
     if (!World) return;
 
-    // Slow time briefly
     UGameplayStatics::SetGlobalTimeDilation(World, 0.05f);
 
     FTimerHandle PauseHandle;
-    World->GetTimerManager().SetTimer(PauseHandle, [World]()
+    // Use a real timer that survives time dilation by using undilated time
+    World->GetTimerManager().SetTimerForNextTick([World, Duration]()
     {
         if (IsValid(World))
         {
-            UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+            FTimerHandle RestoreHandle;
+            World->GetTimerManager().SetTimer(RestoreHandle, [World]()
+            {
+                if (IsValid(World))
+                    UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+            }, Duration / 0.05f, false); // scale duration by dilation
         }
-    }, Duration, false);
+    });
 }
 
 void UCombatComponent::TriggerCameraShake(float Intensity)
 {
-    if (!LightHitCameraShake) return;
     UWorld* World = GetWorld();
     if (!World) return;
 
@@ -272,9 +269,14 @@ void UCombatComponent::TriggerCameraShake(float Intensity)
     if (!PC) return;
 
     TSubclassOf<UCameraShakeBase> ShakeClass =
-        (Intensity >= 1.2f && HeavyHitCameraShake) ? HeavyHitCameraShake : LightHitCameraShake;
+        (Intensity >= 1.2f && HeavyHitCameraShake)
+        ? HeavyHitCameraShake
+        : LightHitCameraShake;
 
-    PC->ClientStartCameraShake(ShakeClass, Intensity);
+    if (ShakeClass)
+    {
+        PC->ClientStartCameraShake(ShakeClass, Intensity);
+    }
 }
 
 void UCombatComponent::SpawnHitEffect(const FVector& Location)

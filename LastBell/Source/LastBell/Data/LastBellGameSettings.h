@@ -4,6 +4,8 @@
 #include "Engine/DataAsset.h"
 #include "LastBellGameSettings.generated.h"
 
+class UFighterDataAsset;
+
 UCLASS(BlueprintType, Blueprintable)
 class LASTBELL_API ULastBellGameSettings : public UDataAsset
 {
@@ -30,9 +32,6 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match")
     float KnockdownCountInterval = 1.f;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match")
-    float KOThreshold = 100.f;
-
     // ─── Ring Bounds ──────────────────────────────────────────────────────────
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ring")
@@ -44,12 +43,9 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ring")
     float MaxFighterDistance = 320.f;
 
-    // ─── Camera ───────────────────────────────────────────────────────────────
+    // ─── Effects ─────────────────────────────────────────────────────────────
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera")
-    float CameraShakeIntensityMultiplier = 1.f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
     float HitPauseTimeDilationScale = 0.05f;
 
     // ─── Audio ────────────────────────────────────────────────────────────────

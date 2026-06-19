@@ -8,7 +8,7 @@
 
 ABoxingAIController::ABoxingAIController()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = false;
 }
 
 void ABoxingAIController::BeginPlay()
@@ -24,18 +24,20 @@ void ABoxingAIController::OnPossess(APawn* InPawn)
 
 void ABoxingAIController::StartAI(AActor* PlayerTarget)
 {
-    if (!BehaviorTree || !Blackboard) return;
+    if (!BehaviorTree) return;
 
     UseBlackboard(BehaviorTree->BlackboardAsset, Blackboard);
     RunBehaviorTree(BehaviorTree);
 
-    Blackboard->SetValueAsObject(BBKeys::Player, PlayerTarget);
-    if (ControlledBoxer)
+    if (Blackboard)
     {
-        Blackboard->SetValueAsObject(BBKeys::Self, ControlledBoxer);
+        Blackboard->SetValueAsObject(BBKeys::Player, PlayerTarget);
+        if (ControlledBoxer)
+        {
+            Blackboard->SetValueAsObject(BBKeys::Self, ControlledBoxer);
+        }
     }
 
-    // Update blackboard frequently
     GetWorldTimerManager().SetTimer(
         BlackboardUpdateHandle,
         this, &ABoxingAIController::UpdateBlackboard,
@@ -61,29 +63,28 @@ void ABoxingAIController::UpdateBlackboard()
     AActor* Player = Cast<AActor>(
         Blackboard->GetValueAsObject(BBKeys::Player));
 
-    if (Player)
+    if (!Player) return;
+
+    float Dist = FVector::Dist(
+        ControlledBoxer->GetActorLocation(),
+        Player->GetActorLocation());
+    Blackboard->SetValueAsFloat(BBKeys::DistToPlayer, Dist);
+
+    bool bPlayerAttacking = false;
+    if (Player->Implements<UBoxerInterface>())
     {
-        float Dist = FVector::Dist(
-            ControlledBoxer->GetActorLocation(),
-            Player->GetActorLocation());
-        Blackboard->SetValueAsFloat(BBKeys::DistToPlayer, Dist);
-
-        bool bPlayerAttacking = false;
-        if (Player->Implements<UBoxerInterface>())
-        {
-            bPlayerAttacking = IBoxerInterface::Execute_IsAttacking(Player);
-        }
-        Blackboard->SetValueAsBool(BBKeys::bPlayerAttacking, bPlayerAttacking);
-
-        float HP = ControlledBoxer->StatsComponent->GetHealthPercent();
-        Blackboard->SetValueAsFloat(BBKeys::HealthPercent, HP);
-
-        bool bCanAct = !ControlledBoxer->GetCurrentState() ==
-            EBoxerState::Attacking &&
-            !ControlledBoxer->GetCurrentState() == EBoxerState::HitStun;
-        Blackboard->SetValueAsBool(BBKeys::bCanAttack, bCanAct);
-
-        // Retreat when low health
-        Blackboard->SetValueAsBool(BBKeys::bShouldRetreat, HP < 0.2f);
+        bPlayerAttacking = IBoxerInterface::Execute_IsAttacking(Player);
     }
+    Blackboard->SetValueAsBool(BBKeys::bPlayerAttacking, bPlayerAttacking);
+
+    float HP = ControlledBoxer->StatsComponent->GetHealthPercent();
+    Blackboard->SetValueAsFloat(BBKeys::HealthPercent, HP);
+
+    EBoxerState State = ControlledBoxer->GetCurrentState();
+    bool bCanAct = State != EBoxerState::Attacking
+        && State != EBoxerState::HitStun
+        && State != EBoxerState::KnockedDown
+        && State != EBoxerState::KO;
+    Blackboard->SetValueAsBool(BBKeys::bCanAttack, bCanAct);
+    Blackboard->SetValueAsBool(BBKeys::bShouldRetreat, HP < 0.2f);
 }
